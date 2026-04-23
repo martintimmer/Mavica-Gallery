@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAVICA GALLERY // Digital Archive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { pixel: ['"Press Start 2P"'], terminal: ['"VT323"'] },
+                    colors: {
+                        phosphor: '#00ff41', amber: '#ffb000', crt: '#0a0a0a',
+                        panel: '#1a1a1a', border: '#333', warm: '#ff6b35'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --phosphor: #00ff41; --amber: #ffb000; --warm: #ff6b35;
+            --crt: #0a0a0a; --panel: #1a1a1a; --border: #333;
+            --glow-green: 0 0 10px #00ff4180, 0 0 30px #00ff4130;
+            --glow-amber: 0 0 10px #ffb00060, 0 0 30px #ffb00020;
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'VT323', monospace; background: var(--crt);
+            color: #c0c0c0; margin: 0; min-height: 100vh;
+            font-size: 18px; overflow-x: hidden;
+        }
+        /* CRT Scanline Overlay */
+        #scanlines {
+            position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+            );
+        }
+        /* Noise texture */
+        body::before {
+            content: ''; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+            opacity: 0.025;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+        /* Boot screen */
+        #boot-screen {
+            position: fixed; inset: 0; z-index: 10000; background: var(--crt);
+            display: flex; align-items: center; justify-content: center;
+            transition: opacity 0.5s; cursor: pointer;
+        }
+        #boot-screen.hidden { opacity: 0; pointer-events: none; }
+        .boot-line { opacity: 0; transform: translateY(4px); transition: all 0.3s; }
+        .boot-line.visible { opacity: 1; transform: translateY(0); }
+        .boot-ok { color: var(--phosphor); }
+        .boot-warn { color: var(--amber); }
+        .boot-cursor { animation: blink-cursor 0.6s step-end infinite; }
+        @keyframes blink-cursor { 50% { opacity: 0; } }
+        /* Retro borders */
+        .retro-outset { border: 2px outset #555; }
+        .retro-inset { border: 2px inset #444; }
+        /* Glow text */
+        .glow-green { text-shadow: var(--glow-green); color: var(--phosphor); }
+        .glow-amber { text-shadow: var(--glow-amber); color: var(--amber); }
+        /* Retro button */
+        .retro-btn {
+            font-family: 'Press Start 2P', monospace; font-size: 10px;
+            background: linear-gradient(180deg, #3a3a3a 0%, #222 100%);
+            border: 2px outset #666; color: #ccc; padding: 10px 18px;
+            cursor: pointer; transition: all 0.15s; text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .retro-btn:hover { background: linear-gradient(180deg, #4a4a4a 0%, #333 100%); color: #fff; }
+        .retro-btn:active { border-style: inset; transform: translate(1px, 1px); }
+        .retro-btn.green { border-color: var(--phosphor); color: var(--phosphor); }
+        .retro-btn.green:hover { box-shadow: var(--glow-green); background: #0a2a0a; }
+        /* Upload zone */
+        #drop-zone {
+            border: 3px dashed #444; transition: all 0.3s; position: relative;
+            min-height: 200px; cursor: pointer;
+        }
+        #drop-zone.dragover { border-color: var(--phosphor); background: #00ff4108; box-shadow: inset 0 0 40px #00ff4110; }
+        #drop-zone:hover { border-color: #666; }
+        /* Progress bar */
+        .progress-track {
+            height: 22px; background: #111; border: 2px inset #444; overflow: hidden; position: relative;
+        }
+        .progress-fill {
+            height: 100%; width: 0%; transition: width 0.3s;
+            background: repeating-linear-gradient(90deg, var(--phosphor) 0px, var(--phosphor) 10px, #00cc33 10px, #00cc33 12px);
+            box-shadow: 0 0 8px #00ff4160;
+        }
+        .progress-label {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 12px; color: #fff; text-shadow: 0 0 4px #000; font-family: 'Press Start 2P', monospace;
+        }
+        /* Gallery grid - masonry with CSS columns */
+        .gallery-grid { columns: 3; column-gap: 14px; }
+        @media (max-width: 1024px) { .gallery-grid { columns: 2; } }
+        @media (max-width: 640px) { .gallery-grid { columns: 1; } }
+        .gallery-item {
+            break-inside: avoid; margin-bottom: 14px; position: relative;
+            transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.5s ease;
+            cursor: pointer;
+        }
+        .gallery-item:hover { z-index: 2; }
+        .gallery-item:hover .photo-frame { border-color: var(--phosphor); box-shadow: var(--glow-green); }
+        .gallery-item:hover .photo-overlay { opacity: 1; transform: translateY(0); }
+        .photo-frame {
+            border: 2px solid #333; overflow: hidden; position: relative;
+            background: #111; transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .photo-frame img { width: 100%; display: block; }
+        .photo-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
+            padding: 24px 10px 10px; opacity: 0; transform: translateY(8px);
+            transition: all 0.3s;
+        }
+        /* Develop animation for new photos */
+        @keyframes develop {
+            0% { filter: brightness(3) saturate(0) blur(8px); opacity: 0.3; }
+            40% { filter: brightness(1.8) saturate(0.3) blur(4px); opacity: 0.6; }
+            70% { filter: brightness(1.2) saturate(0.8) blur(1px); opacity: 0.9; }
+            100% { filter: brightness(1) saturate(1) blur(0); opacity: 1; }
+        }
+        .developing img { animation: develop 1.5s ease-out forwards; }
+        /* Scatter animation for reorganization */
+        @keyframes settle-in {
+            0% { transform: scale(1.04); }
+            50% { transform: scale(0.98); }
+            100% { transform: scale(1); }
+        }
+        .settled { animation: settle-in 0.4s ease-out; }
+        /* Lightbox */
+        #lightbox {
+            position: fixed; inset: 0; z-index: 5000; background: rgba(0,0,0,0.92);
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        #lightbox.active { display: flex; }
+        #lightbox img {
+            max-width: 90vw; max-height: 82vh; object-fit: contain;
+            border: 2px solid #333; box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        }
+        .lb-nav {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 50px; height: 50px; border: 2px outset #555;
+            background: rgba(10,10,10,0.8); color: var(--phosphor);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 20px; transition: all 0.2s;
+            font-family: 'Press Start 2P', monospace;
+        }
+        .lb-nav:hover { background: #1a3a1a; box-shadow: var(--glow-green); border-color: var(--phosphor); }
+        .lb-prev { left: 16px; }
+        .lb-next { right: 16px; }
+        .lb-close {
+            position: absolute; top: 16px; right: 16px;
+            width: 40px; height: 40px; border: 2px outset #555;
+            background: rgba(10,10,10,0.8); color: #ff4444;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 16px; transition: all 0.2s;
+        }
+        .lb-close:hover { background: #3a1a1a; border-color: #ff4444; }
+        .lb-info {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            text-align: center; font-family: 'VT323', monospace; font-size: 20px;
+            color: #888; background: rgba(0,0,0,0.6); padding: 6px 20px;
+            border: 1px solid #333;
+        }
+        .lb-info .lb-counter { color: var(--phosphor); font-family: 'Press Start 2P', monospace; font-size: 10px; }
+        /* Settings modal */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 6000; background: rgba(0,0,0,0.8);
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-panel {
+            background: var(--panel); border: 2px outset #555; padding: 0;
+            width: 90%; max-width: 540px; max-height: 85vh; overflow-y: auto;
+        }
+        .modal-header {
+            background: linear-gradient(90deg, #1a1a1a, #2a2a2a);
+            padding: 12px 16px; border-bottom: 2px inset #444;
+            font-family: 'Press Start 2P', monospace; font-size: 11px; color: var(--phosphor);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-body { padding: 20px; }
+        .modal-input {
+            width: 100%; background: #0a0a0a; border: 2px inset #444;
+            color: var(--phosphor); font-family: 'VT323', monospace; font-size: 16px;
+            padding: 8px 10px; outline: none;
+        }
+        .modal-input:focus { box-shadow: 0 0 0 1px var(--phosphor); }
+        .modal-input::placeholder { color: #444; }
+        .modal-label {
+            font-family: 'Press Start 2P', monospace; font-size: 8px;
+            color: #888; margin-bottom: 6px; display: block; text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .modal-hint { font-size: 15px; color: #555; margin-top: 4px; line-height: 1.4; }
+        /* Toast */
+        #toast-container {
+            position: fixed; bottom: 20px; right: 20px; z-index: 8000;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            padding: 12px 18px; border: 2px outset #555; background: var(--panel);
+            font-size: 16px; min-width: 260px; max-width: 380px;
+            animation: toast-in 0.4s ease-out;
+        }
+        .toast.success { border-color: var(--phosphor); color: var(--phosphor); }
+        .toast.error { border-color: #ff3333; color: #ff3333; }
+        .toast.info { border-color: var(--amber); color: var(--amber); }
+        @keyframes toast-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateX(40px); } }
+        /* Hero animated underline */
+        .hero-title-line {
+            height: 2px; background: var(--phosphor); margin-top: 12px;
+            box-shadow: var(--glow-green); animation: line-pulse 2s ease-in-out infinite;
+        }
+        @keyframes line-pulse {
+            0%, 100% { opacity: 0.6; width: 100%; }
+            50% { opacity: 1; width: 85%; }
+        }
+        /* Floating dust particles */
+        .dust {
+            position: fixed; width: 2px; height: 2px; background: #ffffff10;
+            border-radius: 50%; pointer-events: none; z-index: 1;
+            animation: float-dust linear infinite;
+        }
+        @keyframes float-dust {
+            0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-10vh) translateX(40px); opacity: 0; }
+        }
+        /* Status indicator blink */
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+            animation: status-blink 1.5s ease-in-out infinite;
+        }
+        @keyframes status-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #333; border: 1px inset #555; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Scanlines -->
+    <div id="scanlines" aria-hidden="true"></div>
+
+    <!-- Boot Screen -->
+    <div id="boot-screen" role="alert" aria-label="Loading">
+        <div class="font-terminal text-lg leading-8" style="max-width: 560px; width: 90%;">
+            <div class="boot-line" data-delay="0">MAVICA GALLERY SYSTEM v2.1</div>
+            <div class="boot-line" data-delay="200">(c) 1998 Sony Corporation</div>
+            <div class="boot-line mt-4" data-delay="500">Initializing system...</div>
+            <div class="boot-line" data-delay="800">&nbsp;&nbsp;Floppy drive FD-91.... <span class="boot-ok">[OK]</span></div>
+            <div class="boot-line" data-delay="1100">&nbsp;&nbsp;Display adapter....... <span class="boot-ok">[OK]</span></div>
+            <div class="boot-line" data-delay="1400">&nbsp;&nbsp;Memory 640K.......... <span class="boot-ok">[OK]</span></div>
+            <div class="boot-line" data-delay="1700">&nbsp;&nbsp;S3 Storage........... <span id="boot-s3-status" class="boot-warn">[LOCAL]</span></div>
+            <div class="boot-line mt-4" data-delay="2200">&gt; Loading gallery module...<span class="boot-cursor">_</span></div>
+            <div class="boot-line glow-green mt-6" data-delay="3000">READY.</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" style="opacity: 0; transition: opacity 0.6s;">
+
+        <!-- Fixed Settings Button -->
+        <button id="settings-btn" onclick="toggleSettings()" aria-label="Settings"
+            class="fixed top-4 right-4 z-50 retro-btn" style="padding: 8px 10px; font-size: 14px;">
+            <i class="fas fa-cog"></i>
+        </button>
+
+        <!-- Hero Section -->
+        <header class="pt-16 pb-12 px-6 text-center relative">
+            <div class="max-w-3xl mx-auto">
+                <p class="font-pixel text-xs tracking-widest mb-4" style="color: #555;">SONY // DIGITAL ARCHIVE SYSTEM</p>
+                <h1 class="font-pixel text-2xl sm:text-4xl glow-green leading-relaxed">
+                    MAVICA<br>GALLERY
+                </h1>
+                <div class="hero-title-line mx-auto" style="max-width: 320px;"></div>
+                <p class="font-terminal text-xl mt-6" style="color: #666;">
+                    FD-91 Mavica Floppy Disk Camera Archive
+                </p>
+                <!-- Stats bar -->
+                <div class="flex justify-center gap-6 sm:gap-10 mt-8 flex-wrap">
+                    <div class="retro-inset px-4 py-3 text-center" style="min-width: 120px;">
+                        <div class="font-pixel text-sm glow-green" id="stat-count">0</div>
+                        <div class="font-pixel text-xs mt-1" style="color: #555; font-size: 7px;">IMAGES</div>
+                    </div>
+                    <div class="retro-inset px-4 py-3 text-center" style="min-width: 120px;">
+                        <div class="font-pixel text-sm glow-amber" id="stat-disks">0</div>
+                        <div class="font-pixel text-xs mt-1" style="color: #555; font-size: 7px;">FLOPPY DISKS</div>
+                    </div>
+                    <div class="retro-inset px-4 py-3 text-center" style="min-width: 120px;">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="status-dot" id="status-dot" style="background: var(--amber);"></span>
+                            <span class="font-pixel text-sm" id="stat-mode" style="color: var(--amber); font-size: 10px;">LOCAL</span>
+                        </div>
+                        <div class="font-pixel text-xs mt-1" style="color: #555; font-size: 7px;">STORAGE</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Upload Section -->
+        <section class="px-6 pb-10 max-w-4xl mx-auto" aria-label="Upload photos">
+            <div class="flex items-center gap-3 mb-4">
+                <i class="fas fa-floppy-disk" style="color: var(--amber);"></i>
+                <h2 class="font-pixel text-xs" style="color: #888;">IMPORT PHOTOS</h2>
+            </div>
+            <div id="drop-zone" class="retro-outset p-8 text-center"
+                 onclick="document.getElementById('file-input').click()"
+                 role="button" tabindex="0" aria-label="Drop files or click to browse">
+                <input type="file" id="file-input" multiple accept="image/*" class="hidden" aria-hidden="true">
+                <div id="drop-content">
+                    <i class="fas fa-floppy-disk text-4xl mb-4" style="color: #444;"></i>
+                    <p class="font-terminal text-xl" style="color: #666;">DROP FILES HERE OR CLICK TO BROWSE</p>
+                    <p class="font-terminal mt-2" style="color: #444; font-size: 15px;">Accepts JPEG, PNG, GIF, BMP, WebP</p>
+                </div>
+                <div id="upload-progress" class="hidden mt-4">
+                    <p class="font-pixel text-xs mb-2" style="color: var(--phosphor); font-size: 8px;" id="upload-status">UPLOADING...</p>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progress-fill"></div>
+                        <div class="progress-label" id="progress-label">0%</div>
+                    </div>
+                    <p class="font-terminal mt-2" style="color: #555; font-size: 15px;" id="upload-detail"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gallery Section -->
+        <section class="px-6 pb-20 max-w-6xl mx-auto" aria-label="Photo gallery">
+            <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-images" style="color: var(--phosphor);"></i>
+                    <h2 class="font-pixel text-xs" style="color: #888;">ARCHIVE</h2>
+                    <span class="font-pixel text-xs glow-green" id="gallery-count-label" style="font-size: 9px;">// 0 IMAGES</span>
+                </div>
+                <div class="flex gap-2">
+                    <button class="retro-btn" style="font-size: 8px; padding: 6px 10px;" onclick="sortGallery('newest')" id="sort-newest" aria-label="Sort newest first">
+                        <i class="fas fa-arrow-down-wide-short"></i> NEW
+                    </button>
+                    <button class="retro-btn" style="font-size: 8px; padding: 6px 10px;" onclick="sortGallery('oldest')" id="sort-oldest" aria-label="Sort oldest first">
+                        <i class="fas fa-arrow-up-wide-short"></i> OLD
+                    </button>
+                    <button class="retro-btn" style="font-size: 8px; padding: 6px 10px;" onclick="sortGallery('name')" id="sort-name" aria-label="Sort by name">
+                        <i class="fas fa-arrow-down-a-z"></i> A-Z
+                    </button>
+                </div>
+            </div>
+            <div class="gallery-grid" id="gallery-grid">
+                <!-- Gallery items injected here -->
+            </div>
+            <div id="empty-state" class="text-center py-20">
+                <i class="fas fa-camera-retro text-5xl mb-4" style="color: #222;"></i>
+                <p class="font-terminal text-xl" style="color: #444;">No images in archive</p>
+                <p class="font-terminal" style="color: #333; font-size: 15px;">Drop your Mavica photos above to get started</p>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="text-center pb-10 px-6" style="color: #333;">
+            <div class="retro-inset inline-block px-6 py-3">
+                <p class="font-pixel" style="font-size: 7px;">MAVICA GALLERY v2.1 // FLOPPY DISK DIGITAL ARCHIVE</p>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Lightbox -->
+    <div id="lightbox" role="dialog" aria-label="Image viewer" aria-modal="true">
+        <button class="lb-close" onclick="closeLightbox()" aria-label="Close viewer"><i class="fas fa-xmark"></i></button>
+        <button class="lb-nav lb-prev" onclick="navLightbox(-1)" aria-label="Previous image"><i class="fas fa-chevron-left"></i></button>
+        <button class="lb-nav lb-next" onclick="navLightbox(1)" aria-label="Next image"><i class="fas fa-chevron-right"></i></button>
+        <img id="lb-image" src="" alt="Gallery image">
+        <div class="lb-info">
+            <div class="lb-counter" id="lb-counter">01 / 01</div>
+            <div id="lb-filename" class="mt-1" style="font-size: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay" role="dialog" aria-label="Settings" aria-modal="true">
+        <div class="modal-panel">
+            <div class="modal-header">
+                <span><i class="fas fa-cog"></i> S3 STORAGE CONFIG</span>
+                <button onclick="toggleSettings()" style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;" aria-label="Close settings">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body space-y-5">
+                <div>
+                    <label class="modal-label" for="cfg-upload-api">Upload API Endpoint</label>
+                    <input type="url" id="cfg-upload-api" class="modal-input" placeholder="https://your-api.com/upload-url">
+                    <p class="modal-hint">POST endpoint that returns a presigned S3 URL. Send: { filename, contentType }. Receive: { presignedUrl, fileUrl, key }</p>
+                </div>
+                <div>
+                    <label class="modal-label" for="cfg-list-api">Gallery List Endpoint</label>
+                    <input type="url" id="cfg-list-api" class="modal-input" placeholder="https://your-api.com/images">
+                    <p class="modal-hint">GET endpoint returning image list. Format: { images: [{ url, filename }] } or plain URL array. Optional — gallery shows session uploads if not set.</p>
+                </div>
+                <div class="retro-inset p-3" style="background: #111;">
+                    <p class="font-pixel" style="font-size: 7px; color: var(--amber);">HOW IT WORKS</p>
+                    <p class="modal-hint mt-2" style="color: #666;">
+                        1. Your Upload API generates a presigned PUT URL for S3.<br>
+                        2. Files are uploaded directly to S3 via that URL.<br>
+                        3. The List API is called on page load to populate the gallery.<br>
+                        4. Without APIs, photos are kept in browser memory only.
+                    </p>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button class="retro-btn green flex-1" onclick="saveSettings()">
+                        <i class="fas fa-save"></i> SAVE CONFIG
+                    </button>
+                    <button class="retro-btn flex-1" onclick="testConnection()">
+                        <i class="fas fa-plug"></i> TEST
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" aria-live="polite"></div>
+
+    <script>
+        /* ==========================================
+           STATE
+        ========================================== */
+        let photos = [];           // { id, url, filename, timestamp }
+        let currentSort = 'newest';
+        let lightboxIndex = -1;
+        let lightboxOpen = false;
+        let idCounter = 0;
+
+        /* ==========================================
+           S3 CONFIG
+        ========================================== */
+        function getS3Settings() {
+            try {
+                return {
+                    uploadApi: localStorage.getItem('mavica_upload_api') || '',
+                    listApi: localStorage.getItem('mavica_list_api') || ''
+                };
+            } catch { return { uploadApi: '', listApi: '' }; }
+        }
+
+        function isS3Configured() {
+            const s = getS3Settings();
+            return s.uploadApi.trim() !== '';
+        }
+
+        function saveSettings() {
+            const uploadApi = document.getElementById('cfg-upload-api').value.trim();
+            const listApi = document.getElementById('cfg-list-api').value.trim();
+            try {
+                localStorage.setItem('mavica_upload_api', uploadApi);
+                localStorage.setItem('mavica_list_api', listApi);
+            } catch(e) { /* localStorage unavailable */ }
+            updateModeIndicator();
+            toggleSettings();
+            showToast(uploadApi ? 'S3 configuration saved' : 'Running in local mode', 'success');
+        }
+
+        function loadSettingsToUI() {
+            const s = getS3Settings();
+            document.getElementById('cfg-upload-api').value = s.uploadApi;
+            document.getElementById('cfg-list-api').value = s.listApi;
+        }
+
+        async function testConnection() {
+            const s = getS3Settings();
+            const uploadApi = document.getElementById('cfg-upload-api').value.trim();
+            const listApi = document.getElementById('cfg-list-api').value.trim();
+            if (!uploadApi && !listApi) {
+                showToast('No endpoints configured — local mode active', 'info');
+                return;
+            }
+            if (listApi) {
+                try {
+                    const res = await fetch(listApi, { method: 'GET', signal: AbortSignal.timeout(5000) });
+                    if (res.ok) showToast('List API connection successful', 'success');
+                    else showToast(`List API returned ${res.status}`, 'error');
+                } catch(e) { showToast('List API connection failed: ' + e.message, 'error'); }
+            } else {
+                showToast('Upload API will be tested on next upload', 'info');
+            }
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            if (modal.classList.contains('active')) {
+                modal.classList.remove('active');
+            } else {
+                loadSettingsToUI();
+                modal.classList.add('active');
+            }
+        }
+
+        function updateModeIndicator() {
+            const s3 = isS3Configured();
+            document.getElementById('stat-mode').textContent = s3 ? 'S3' : 'LOCAL';
+            document.getElementById('stat-mode').style.color = s3 ? 'var(--phosphor)' : 'var(--amber)';
+            document.getElementById('status-dot').style.background = s3 ? 'var(--phosphor)' : 'var(--amber)';
+            const bootStatus = document.getElementById('boot-s3-status');
+            if (bootStatus) {
+                bootStatus.textContent = s3 ? '[CONNECTED]' : '[LOCAL]';
+                bootStatus.className = s3 ? 'boot-ok' : 'boot-warn';
+            }
+        }
+
+        /* ==========================================
+           S3 UPLOAD
+        ========================================== */
+        // Extract presigned URL data from various response formats
+        function extractPresignedData(data) {
+            if (data.presignedUrl) return data;
+            if (data.uploadUrl) return { presignedUrl: data.uploadUrl, fileUrl: data.url || data.uploadUrl, key: data.key || '' };
+            if (data.url && !data.fileUrl && typeof data.url === 'string' && data.url.startsWith('http')) {
+                return { presignedUrl: data.url, fileUrl: data.url, key: data.key || '' };
+            }
+            if (typeof data === 'string' && data.startsWith('http')) return { presignedUrl: data, fileUrl: data, key: '' };
+            return data;
+        }
+
+        async function uploadFile(file) {
+            const settings = getS3Settings();
+
+            if (settings.uploadApi) {
+                // S3 mode: get presigned URL then upload
+                try {
+                    const presignRes = await fetch(settings.uploadApi, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: file.name, contentType: file.type })
+                    });
+                    if (!presignRes.ok) throw new Error(`Presign request failed: ${presignRes.status}`);
+                    const presignData = extractPresignedData(await presignRes.json());
+
+                    // Upload file to S3 via XHR for progress tracking
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('PUT', presignData.presignedUrl);
+                        xhr.setRequestHeader('Content-Type', file.type);
+                        xhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) updateProgress((e.loaded / e.total) * 100);
+                        };
+                        xhr.onload = () => {
+                            if (xhr.status >= 200 && xhr.status < 300) resolve();
+                            else reject(new Error(`S3 upload failed: ${xhr.status}`));
+                        };
+                        xhr.onerror = () => reject(new Error('Network error during upload'));
+                        xhr.send(file);
+                    });
+
+                    const fileUrl = presignData.fileUrl || presignData.presignedUrl.split('?')[0];
+                    return addPhoto(fileUrl, file.name, true);
+                } catch(e) {
+                    showToast('S3 upload failed: ' + e.message + ' — storing locally', 'error');
+                    const localUrl = URL.createObjectURL(file);
+                    return addPhoto(localUrl, file.name, true);
+                }
+            } else {
+                // Local mode: object URL only
+                return new Promise(resolve => {
+                    updateProgress(100);
+                    setTimeout(() => {
+                        const localUrl = URL.createObjectURL(file);
+                        addPhoto(localUrl, file.name, true);
+                        resolve();
+                    }, 400);
+                });
+            }
+        }
+
+        /* ==========================================
+           GALLERY MANAGEMENT
+        ========================================== */
+        function addPhoto(url, filename, animate) {
+            const id = 'photo-' + (++idCounter);
+            const photo = { id, url, filename: filename || 'unknown.jpg', timestamp: Date.now() };
+            photos.unshift(photo);
+            renderGalleryItem(photo, animate);
+            updateStats();
+            return photo;
+        }
+
+        function renderGalleryItem(photo, animate) {
+            const grid = document.getElementById('gallery-grid');
+            const empty = document.getElementById('empty-state');
+            empty.style.display = 'none';
+
+            const item = document.createElement('div');
+            item.className = 'gallery-item' + (animate ? ' developing' : '');
+            item.dataset.id = photo.id;
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('aria-label', 'View ' + photo.filename);
+            item.onclick = () => openLightbox(photo.id);
+            item.onkeydown = (e) => { if (e.key === 'Enter') openLightbox(photo.id); };
+
+            item.innerHTML = `
+                <div class="photo-frame">
+                    <img src="${photo.url}" alt="${photo.filename}" loading="lazy">
+                    <div class="photo-overlay">
+                        <span style="font-family:'VT323';font-size:15px;color:#ccc;">${photo.filename}</span>
+                    </div>
+                </div>
+            `;
+
+            if (animate) {
+                // FLIP-style vibrant reorganization
+                const existingItems = Array.from(grid.querySelectorAll('.gallery-item'));
+                const firstPositions = {};
+                existingItems.forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    firstPositions[el.dataset.id] = { x: rect.left, y: rect.top };
+                });
+
+                // Insert new item at top
+                grid.prepend(item);
+
+                // Force reflow
+                grid.offsetHeight;
+
+                // Animate existing items to new positions
+                existingItems.forEach((el, i) => {
+                    const newPos = el.getBoundingClientRect();
+                    const first = firstPositions[el.dataset.id];
+                    if (first) {
+                        const dx = first.x - newPos.left;
+                        const dy = first.y - newPos.top;
+                        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                            el.style.transition = 'none';
+                            el.style.transform = `translate(${dx}px, ${dy}px)`;
+                            requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                    el.style.transition = `transform 0.6s cubic-bezier(0.23,1,0.32,1) ${i * 30}ms`;
+                                    el.style.transform = '';
+                                    setTimeout(() => {
+                                        el.classList.add('settled');
+                                        setTimeout(() => el.classList.remove('settled'), 400);
+                                    }, 600 + i * 30);
+                                });
+                            });
+                        }
+                    }
+                });
+
+                // Animate new item flying in
+                const angle = (Math.random() - 0.5) * 20;
+                const x = (Math.random() - 0.5) * 150;
+                const y = -80 - Math.random() * 150;
+                item.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg) scale(0.6)`;
+                item.style.opacity = '0';
+                item.style.transition = 'none';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        item.style.transition = 'all 0.7s cubic-bezier(0.23,1,0.32,1) 0.1s';
+                        item.style.transform = '';
+                        item.style.opacity = '1';
+                    });
+                });
+
+            } else {
+                // No animation — initial load
+                grid.appendChild(item);
+            }
+        }
+
+        function renderFullGallery() {
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = '';
+            const sorted = getSortedPhotos();
+            if (sorted.length === 0) {
+                document.getElementById('empty-state').style.display = 'block';
+                return;
+            }
+            document.getElementById('empty-state').style.display = 'none';
+            sorted.forEach(photo => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                item.dataset.id = photo.id;
+                item.setAttribute('role', 'button');
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('aria-label', 'View ' + photo.filename);
+                item.onclick = () => openLightbox(photo.id);
+                item.onkeydown = (e) => { if (e.key === 'Enter') openLightbox(photo.id); };
+                item.innerHTML = `
+                    <div class="photo-frame">
+                        <img src="${photo.url}" alt="${photo.filename}" loading="lazy">
+                        <div class="photo-overlay">
+                            <span style="font-family:'VT323';font-size:15px;color:#ccc;">${photo.filename}</span>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(item);
+            });
+        }
+
+        function getSortedPhotos() {
+            const sorted = [...photos];
+            switch(currentSort) {
+                case 'newest': sorted.sort((a, b) => b.timestamp - a.timestamp); break;
+                case 'oldest': sorted.sort((a, b) => a.timestamp - b.timestamp); break;
+                case 'name': sorted.sort((a, b) => a.filename.localeCompare(b.filename)); break;
+            }
+            return sorted;
+        }
+
+        function sortGallery(mode) {
+            currentSort = mode;
+            // Update button states
+            document.querySelectorAll('[id^="sort-"]').forEach(btn => {
+                btn.style.borderColor = '';
+                btn.style.color = '';
+            });
+            const activeBtn = document.getElementById('sort-' + mode);
+            if (activeBtn) {
+                activeBtn.style.borderColor = 'var(--phosphor)';
+                activeBtn.style.color = 'var(--phosphor)';
+            }
+
+            // FLIP animate the re-sort
+            const grid = document.getElementById('gallery-grid');
+            const items = Array.from(grid.querySelectorAll('.gallery-item'));
+            const firstPositions = {};
+            items.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                firstPositions[el.dataset.id] = { x: rect.left, y: rect.top };
+            });
+
+            // Re-render
+            renderFullGallery();
+
+            // Animate from old to new positions
+            const newItems = Array.from(grid.querySelectorAll('.gallery-item'));
+            newItems.forEach((el, i) => {
+                const newPos = el.getBoundingClientRect();
+                const first = firstPositions[el.dataset.id];
+                if (first) {
+                    const dx = first.x - newPos.left;
+                    const dy = first.y - newPos.top;
+                    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                        el.style.transition = 'none';
+                        el.style.transform = `translate(${dx}px, ${dy}px)`;
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                el.style.transition = `transform 0.5s cubic-bezier(0.23,1,0.32,1) ${i * 20}ms`;
+                                el.style.transform = '';
+                            });
+                        });
+                    }
+                } else {
+                    // New item that wasn't in previous list
+                    el.style.opacity = '0';
+                    el.style.transform = 'scale(0.8)';
+                    el.style.transition = 'none';
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            el.style.transition = `all 0.5s cubic-bezier(0.23,1,0.32,1) ${i * 20}ms`;
+                            el.style.opacity = '1';
+                            el.style.transform = '';
+                        });
+                    });
+                }
+            });
+        }
+
+        function updateStats() {
+            const count = photos.length;
+            const disks = Math.max(1, Math.ceil(count / 4)); // ~4 photos per floppy
+            document.getElementById('stat-count').textContent = count;
+            document.getElementById('stat-disks').textContent = disks;
+            document.getElementById('gallery-count-label').textContent = `// ${count} IMAGE${count !== 1 ? 'S' : ''}`;
+        }
+
+        /* ==========================================
+           S3 GALLERY LOAD
+        ========================================== */
+        async function loadGalleryFromS3() {
+            const settings = getS3Settings();
+            if (!settings.listApi) return;
+
+            try {
+                const res = await fetch(settings.listApi, { signal: AbortSignal.timeout(8000) });
+                if (!res.ok) throw new Error(`List API returned ${res.status}`);
+                const data = await res.json();
+
+                let imageList = [];
+                if (Array.isArray(data)) {
+                    imageList = data;
+                } else if (data.images && Array.isArray(data.images)) {
+                    imageList = data.images;
+                } else if (data.files && Array.isArray(data.files)) {
+                    imageList = data.files;
+                }
+
+                imageList.forEach(img => {
+                    const url = typeof img === 'string' ? img : (img.url || img.src || img.location);
+                    const name = typeof img === 'string' ? url.split('/').pop().split('?')[0] : (img.filename || img.name || img.key || url.split('/').pop().split('?')[0]);
+                    if (url && typeof url === 'string') {
+                        addPhoto(url, name, false);
+                    }
+                });
+
+                if (photos.length > 0) {
+                    showToast(`Loaded ${photos.length} images from S3`, 'success');
+                }
+            } catch(e) {
+                if (photos.length === 0) showToast('Could not load gallery from S3: ' + e.message, 'error');
+            }
+        }
+
+        /* ==========================================
+           UPLOAD HANDLING
+        ========================================== */
+        function updateProgress(pct) {
+            const fill = document.getElementById('progress-fill');
+            const label = document.getElementById('progress-label');
+            fill.style.width = pct + '%';
+            label.textContent = Math.round(pct) + '%';
+        }
+
+        function showUploadUI(show) {
+            document.getElementById('upload-progress').classList.toggle('hidden', !show);
+            document.getElementById('drop-content').style.opacity = show ? '0.3' : '1';
+            if (!show) {
+                updateProgress(0);
+                document.getElementById('upload-detail').textContent = '';
+            }
+        }
+
+        async function handleFiles(files) {
+            const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+            if (imageFiles.length === 0) {
+                showToast('No image files detected', 'error');
+                return;
+            }
+
+            showUploadUI(true);
+            const total = imageFiles.length;
+
+            for (let i = 0; i < total; i++) {
+                const file = imageFiles[i];
+                document.getElementById('upload-status').textContent = `UPLOADING ${i + 1}/${total}...`;
+                document.getElementById('upload-detail').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+                updateProgress(0);
+
+                try {
+                    await uploadFile(file);
+                } catch(e) {
+                    showToast('Failed to upload ' + file.name, 'error');
+                }
+            }
+
+            document.getElementById('upload-status').textContent = 'COMPLETE';
+            updateProgress(100);
+            document.getElementById('upload-detail').textContent = `${total} file${total > 1 ? 's' : ''} imported successfully`;
+
+            setTimeout(() => showUploadUI(false), 2000);
+            showToast(`${total} photo${total > 1 ? 's' : ''} added to archive`, 'success');
+        }
+
+        // Drag and drop
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        dropZone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+        fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFiles(fileInput.files); fileInput.value = ''; });
+
+        /* ==========================================
+           LIGHTBOX
+        ========================================== */
+        function openLightbox(photoId) {
+            const sorted = getSortedPhotos();
+            const idx = sorted.findIndex(p => p.id === photoId);
+            if (idx === -1) return;
+            lightboxIndex = idx;
+            lightboxOpen = true;
+            updateLightbox();
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            lightboxOpen = false;
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        function navLightbox(dir) {
+            const sorted = getSortedPhotos();
+            lightboxIndex = (lightboxIndex + dir + sorted.length) % sorted.length;
+            updateLightbox();
+        }
+
+        function updateLightbox() {
+            const sorted = getSortedPhotos();
+            if (sorted.length === 0) { closeLightbox(); return; }
+            const photo = sorted[lightboxIndex];
+            const img = document.getElementById('lb-image');
+            img.style.opacity = '0';
+            setTimeout(() => {
+                img.src = photo.url;
+                img.alt = photo.filename;
+                img.style.opacity = '1';
+            }, 100);
+            img.style.transition = 'opacity 0.2s';
+
+            const num = String(lightboxIndex + 1).padStart(2, '0');
+            const total = String(sorted.length).padStart(2, '0');
+            document.getElementById('lb-counter').textContent = `${num} / ${total}`;
+            document.getElementById('lb-filename').textContent = photo.filename;
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (!lightboxOpen) return;
+            if (e.key === 'ArrowLeft') navLightbox(-1);
+            else if (e.key === 'ArrowRight') navLightbox(1);
+            else if (e.key === 'Escape') closeLightbox();
+        });
+
+        // Click outside image to close
+        document.getElementById('lightbox').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('lightbox')) closeLightbox();
+        });
+
+        // Touch swipe support
+        let touchStartX = 0;
+        document.getElementById('lightbox').addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        document.getElementById('lightbox').addEventListener('touchend', (e) => {
+            const diff = e.changedTouches[0].screenX - touchStartX;
+            if (Math.abs(diff) > 50) navLightbox(diff > 0 ? -1 : 1);
+        }, { passive: true });
+
+        /* ==========================================
+           TOAST NOTIFICATIONS
+        ========================================== */
+        function showToast(message, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + (type || 'info');
+            const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+            toast.innerHTML = `<i class="fas ${icons[type] || icons.info}" style="margin-right:8px;"></i>${message}`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'toast-out 0.3s forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        /* ==========================================
+           BOOT SEQUENCE
+        ========================================== */
+        function runBootSequence() {
+            const bootScreen = document.getElementById('boot-screen');
+            const lines = bootScreen.querySelectorAll('.boot-line');
+            let totalDelay = 0;
+
+            // Update S3 status before showing
+            updateModeIndicator();
+
+            lines.forEach(line => {
+                const delay = parseInt(line.dataset.delay) || 0;
+                totalDelay = Math.max(totalDelay, delay);
+                setTimeout(() => line.classList.add('visible'), delay);
+            });
+
+            // Skip on click
+            bootScreen.addEventListener('click', skipBoot, { once: true });
+
+            // Auto-dismiss after boot completes
+            setTimeout(() => skipBoot(), totalDelay + 800);
+        }
+
+        function skipBoot() {
+            const bootScreen = document.getElementById('boot-screen');
+            if (bootScreen.classList.contains('hidden')) return;
+            bootScreen.classList.add('hidden');
+            document.getElementById('main-content').style.opacity = '1';
+            setTimeout(() => bootScreen.remove(), 600);
+        }
+
+        /* ==========================================
+           DUST PARTICLES
+        ========================================== */
+        function createDust() {
+            const body = document.body;
+            for (let i = 0; i < 15; i++) {
+                const dust = document.createElement('div');
+                dust.className = 'dust';
+                dust.style.left = Math.random() * 100 + 'vw';
+                dust.style.animationDuration = (15 + Math.random() * 25) + 's';
+                dust.style.animationDelay = (Math.random() * 20) + 's';
+                dust.style.width = (1 + Math.random() * 2) + 'px';
+                dust.style.height = dust.style.width;
+                body.appendChild(dust);
+            }
+        }
+
+        /* ==========================================
+           INITIALIZATION
+        ========================================== */
+        async function init() {
+            createDust();
+            updateModeIndicator();
+
+            // Set initial sort button state
+            document.getElementById('sort-newest').style.borderColor = 'var(--phosphor)';
+            document.getElementById('sort-newest').style.color = 'var(--phosphor)';
+
+            // Run boot sequence
+            runBootSequence();
+
+            // Load gallery from S3 if configured
+            await loadGalleryFromS3();
+            updateStats();
+
+            // If no S3 list API, render what we have
+            if (photos.length > 0 && !getS3Settings().listApi) {
+                renderFullGallery();
+            }
+        }
+
+        // Close settings modal on overlay click
+        document.getElementById('settings-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('settings-modal')) toggleSettings();
+        });
+
+        // Close settings on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('settings-modal').classList.contains('active')) {
+                toggleSettings();
+            }
+        });
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
