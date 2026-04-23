@@ -23,11 +23,20 @@
     </script>
     <style>
         :root {
-            --phosphor: #00ff41; --amber: #ffb000; --warm: #ff6b35;
-            --crt: #0a0a0a; --panel: #1a1a1a; --border: #333;
-            --glow-green: 0 0 10px #00ff4180, 0 0 30px #00ff4130;
-            --glow-amber: 0 0 10px #ffb00060, 0 0 30px #ffb00020;
-        }
+        /* Primary Palette */
+        --phosphor: #E2D7A7; /* Brighter: Used for primary text, links, and active glows */
+        --amber: #A16B56;    /* Darker: Used for secondary accents and warnings */
+        --crt: #567D89;      /* Background: The main page color */
+
+        /* Derived Palette (Shades of the background for depth) */
+        --panel: #486A75;    /* Darker shade of background for inset panels/modals */
+        --border: #3A5760;   /* Even darker for borders */
+        --warm: #A16B56;     /* Alias for the darker accent */
+
+        /* Glow Effects */
+        --glow-green: 0 0 10px #E2D7A780, 0 0 30px #E2D7A730;
+        --glow-amber: 0 0 10px #A16B5660, 0 0 30px #A16B5620;
+            }
         * { box-sizing: border-box; }
         html { scroll-behavior: smooth; }
         body {
@@ -43,12 +52,13 @@
                 rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
             );
         }
-        /* Noise texture */
-        body::before {
-            content: ''; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
-            opacity: 0.025;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        }
+
+    /* Noise texture - Dust & Grain */
+    body::before {
+        content: ''; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+        opacity: 0.05; /* Slightly increased for visibility on the colored background */
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
         /* Boot screen */
         #boot-screen {
             position: fixed; inset: 0; z-index: 10000; background: var(--crt);
